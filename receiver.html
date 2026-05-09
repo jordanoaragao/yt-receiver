@@ -3,14 +3,100 @@
 <head>
   <style>
     * { margin: 0; padding: 0; background: #000; }
-    iframe { width: 100vw; height: 100vh; border: none; }
+    #player { width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
+  <div id="player"></div>
+
   <script>
+    let player = null;
+    let polling = null;
+
+    // ── Recebe comandos do pai ──
     window.addEventListener('message', (e) => {
-      if (e.data.eval) eval(e.data.eval);
+      const { action, value } = e.data || {};
+
+      switch (action) {
+        case 'init':
+          initPlayer(value); // value = videoId
+          break;
+        case 'play':
+          player?.playVideo();
+          break;
+        case 'pause':
+          player?.pauseVideo();
+          break;
+        case 'seek':
+          player?.seekTo(value, true);
+          break;
+        case 'mute':
+          player?.mute();
+          break;
+        case 'unmute':
+          player?.unMute();
+          break;
+      }
     });
+
+    // ── Envia eventos para o pai ──
+    function toParent(data) {
+      window.parent.postMessage(data, '*');
+    }
+
+    // ── Inicia o player ──
+    function initPlayer(videoId) {
+      player = new YT.Player('player', {
+        videoId,
+        playerVars: {
+          rel: 0,
+          modestbranding: 1,
+          enablejsapi: 1
+        },
+        events: {
+          onReady: (e) => {
+            toParent({ event: 'ready', duration: e.target.getDuration() });
+          },
+          onStateChange: (e) => {
+            toParent({ event: 'stateChange', state: e.data });
+
+            if (e.data === YT.PlayerState.PLAYING) {
+              if (polling) clearInterval(polling);
+              polling = setInterval(() => {
+                toParent({
+                  event: 'timeupdate',
+                  currentTime: player.getCurrentTime(),
+                  duration: player.getDuration()
+                });
+              }, 300);
+            } else {
+              if (polling) clearInterval(polling);
+              polling = null;
+
+              if (e.data === YT.PlayerState.ENDED) {
+                toParent({
+                  event: 'timeupdate',
+                  currentTime: player.getDuration(),
+                  duration: player.getDuration()
+                });
+              }
+            }
+          },
+          onError: (e) => {
+            toParent({ event: 'error', code: e.data });
+          }
+        }
+      });
+    }
+
+    // ── Carrega API do YT ──
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    document.head.appendChild(tag);
+
+    window.onYouTubeIframeAPIReady = function() {
+      toParent({ event: 'apiReady' });
+    };
   </script>
 </body>
 </html>
