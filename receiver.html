@@ -3,95 +3,75 @@
 <head>
   <style>
     * { margin: 0; padding: 0; background: #000; }
-    iframe { width: 100vw; height: 100vh; border: none; }
+    #player { width: 100vw; height: 100vh; }
   </style>
 </head>
 <body>
-  <iframe id="yt" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  <div id="player"></div>
 
+  <script src="https://www.youtube.com/iframe_api"></script>
   <script>
-    const yt = document.getElementById('yt');
-    let duration = 0;
-    let currentState = -1;
+    let player = null;
+    let polling = null;
 
-    // comandos do pai
+    function toParent(data) {
+      window.parent.postMessage(data, '*');
+    }
+
+    window.onYouTubeIframeAPIReady = function() {
+      toParent({ event: 'apiReady' });
+    };
+
     window.addEventListener('message', (e) => {
       const { action, value } = e.data || {};
 
       switch (action) {
         case 'init':
-          yt.src = `https://www.youtube.com/embed/${value}?enablejsapi=1&rel=0&modestbranding=1&origin=https://jordanoaragao.github.io`;
+          player = new YT.Player('player', {
+            videoId: value,
+            playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
+            events: {
+              onReady: (e) => {
+                toParent({ event: 'ready', duration: e.target.getDuration() });
+              },
+              onStateChange: (e) => {
+                toParent({ event: 'stateChange', state: e.data });
+                if (e.data === YT.PlayerState.PLAYING) {
+                  if (polling) clearInterval(polling);
+                  polling = setInterval(() => {
+                    toParent({
+                      event: 'timeupdate',
+                      currentTime: player.getCurrentTime(),
+                      duration: player.getDuration()
+                    });
+                  }, 300);
+                } else {
+                  if (polling) clearInterval(polling);
+                  polling = null;
+                  if (e.data === YT.PlayerState.ENDED) {
+                    toParent({ event: 'timeupdate', currentTime: player.getDuration(), duration: player.getDuration() });
+                  }
+                }
+              },
+              onError: (e) => toParent({ event: 'error', code: e.data })
+            }
+          });
           break;
         case 'play':
-          sendToYT('playVideo');
+          player?.playVideo();
           break;
         case 'pause':
-          sendToYT('pauseVideo');
+          player?.pauseVideo();
           break;
         case 'seek':
-          sendToYT('seekTo', [value, true]);
+          player?.seekTo(value, true);
           break;
         case 'mute':
-          sendToYT('mute');
+          player?.mute();
           break;
         case 'unmute':
-          sendToYT('unMute');
+          player?.unMute();
           break;
-      }
-    });
-
-    function sendToYT(func, args = '') {
-      yt.contentWindow.postMessage(JSON.stringify({
-        event: 'command',
-        func,
-        args
-      }), '*');
-    }
-
-    // assina eventos do YT após iframe carregar
-    yt.addEventListener('load', () => {
-      yt.contentWindow.postMessage(JSON.stringify({
-        event: 'listening',
-        id: 1,
-        channel: 'widget'
-      }), '*');
-    });
-
-    // ouve eventos do iframe YT
-    window.addEventListener('message', (e) => {
-      if (e.source !== yt.contentWindow) return;
-
-      let data;
-      try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; }
-      catch { return; }
-
-      if (data.event === 'onReady') {
-        // solicita info periodicamente
-        setInterval(() => {
-          sendToYT('getDuration');
-        }, 300);
-      }
-
-      if (data.event === 'infoDelivery' && data.info) {
-        const info = data.info;
-
-        if (info.duration && info.duration !== duration) {
-          duration = info.duration;
-          window.parent.postMessage({ event: 'ready', duration }, '*');
-        }
-
-        if (typeof info.currentTime !== 'undefined') {
-          window.parent.postMessage({
-            event: 'timeupdate',
-            currentTime: info.currentTime,
-            duration
-          }, '*');
-        }
-
-        if (typeof info.playerState !== 'undefined' && info.playerState !== currentState) {
-          currentState = info.playerState;
-          window.parent.postMessage({ event: 'stateChange', state: info.playerState }, '*');
-        }
       }
     });
   </script>
