@@ -12,32 +12,49 @@
   <script>
     const yt = document.getElementById('yt');
     let duration = 0;
-    let polling = null;
+    let currentState = -1;
 
     // comandos do pai
     window.addEventListener('message', (e) => {
-      const { action, value, videoId } = e.data || {};
+      const { action, value } = e.data || {};
 
       switch (action) {
         case 'init':
-          yt.src = `https://www.youtube.com/embed/${value}?enablejsapi=1&rel=0&modestbranding=1`;
+          yt.src = `https://www.youtube.com/embed/${value}?enablejsapi=1&rel=0&modestbranding=1&origin=https://jordanoaragao.github.io`;
           break;
         case 'play':
-          yt.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+          sendToYT('playVideo');
           break;
         case 'pause':
-          yt.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+          sendToYT('pauseVideo');
           break;
         case 'seek':
-          yt.contentWindow.postMessage(`{"event":"command","func":"seekTo","args":[${value}, true]}`, '*');
+          sendToYT('seekTo', [value, true]);
           break;
         case 'mute':
-          yt.contentWindow.postMessage('{"event":"command","func":"mute","args":""}', '*');
+          sendToYT('mute');
           break;
         case 'unmute':
-          yt.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
+          sendToYT('unMute');
           break;
       }
+    });
+
+    function sendToYT(func, args = '') {
+      yt.contentWindow.postMessage(JSON.stringify({
+        event: 'command',
+        func,
+        args
+      }), '*');
+    }
+
+    // assina eventos do YT após iframe carregar
+    yt.addEventListener('load', () => {
+      yt.contentWindow.postMessage(JSON.stringify({
+        event: 'listening',
+        id: 1,
+        channel: 'widget'
+      }), '*');
     });
 
     // ouve eventos do iframe YT
@@ -48,10 +65,17 @@
       try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; }
       catch { return; }
 
+      if (data.event === 'onReady') {
+        // solicita info periodicamente
+        setInterval(() => {
+          sendToYT('getDuration');
+        }, 300);
+      }
+
       if (data.event === 'infoDelivery' && data.info) {
         const info = data.info;
 
-        if (info.duration) {
+        if (info.duration && info.duration !== duration) {
           duration = info.duration;
           window.parent.postMessage({ event: 'ready', duration }, '*');
         }
@@ -64,7 +88,8 @@
           }, '*');
         }
 
-        if (typeof info.playerState !== 'undefined') {
+        if (typeof info.playerState !== 'undefined' && info.playerState !== currentState) {
+          currentState = info.playerState;
           window.parent.postMessage({ event: 'stateChange', state: info.playerState }, '*');
         }
       }
