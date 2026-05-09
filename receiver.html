@@ -3,97 +3,72 @@
 <head>
   <style>
     * { margin: 0; padding: 0; background: #000; }
-    #player { width: 100vw; height: 100vh; }
+    iframe { width: 100vw; height: 100vh; border: none; }
   </style>
 </head>
 <body>
-  <div id="player"></div>
+  <iframe id="yt" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
 
   <script>
-    let player = null;
+    const yt = document.getElementById('yt');
+    let duration = 0;
     let polling = null;
 
+    // comandos do pai
     window.addEventListener('message', (e) => {
-      const { action, value } = e.data || {};
+      const { action, value, videoId } = e.data || {};
 
       switch (action) {
         case 'init':
-          initPlayer(value);
+          yt.src = `https://www.youtube.com/embed/${value}?enablejsapi=1&rel=0&modestbranding=1`;
           break;
         case 'play':
-          player?.playVideo();
+          yt.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
           break;
         case 'pause':
-          player?.pauseVideo();
+          yt.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
           break;
         case 'seek':
-          player?.seekTo(value, true);
+          yt.contentWindow.postMessage(`{"event":"command","func":"seekTo","args":[${value}, true]}`, '*');
           break;
         case 'mute':
-          player?.mute();
+          yt.contentWindow.postMessage('{"event":"command","func":"mute","args":""}', '*');
           break;
         case 'unmute':
-          player?.unMute();
+          yt.contentWindow.postMessage('{"event":"command","func":"unMute","args":""}', '*');
           break;
       }
     });
 
-    function toParent(data) {
-      window.parent.postMessage(data, '*');
-    }
+    // ouve eventos do iframe YT
+    window.addEventListener('message', (e) => {
+      if (e.source !== yt.contentWindow) return;
 
-    function initPlayer(videoId) {
-      player = new YT.Player('player', {
-        videoId,
-        playerVars: {
-          rel: 0,
-          modestbranding: 1,
-          enablejsapi: 1
-          // 👆 sem origin aqui
-        },
-        events: {
-          onReady: (e) => {
-            toParent({ event: 'ready', duration: e.target.getDuration() });
-          },
-          onStateChange: (e) => {
-            toParent({ event: 'stateChange', state: e.data });
+      let data;
+      try { data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; }
+      catch { return; }
 
-            if (e.data === YT.PlayerState.PLAYING) {
-              if (polling) clearInterval(polling);
-              polling = setInterval(() => {
-                toParent({
-                  event: 'timeupdate',
-                  currentTime: player.getCurrentTime(),
-                  duration: player.getDuration()
-                });
-              }, 300);
-            } else {
-              if (polling) clearInterval(polling);
-              polling = null;
+      if (data.event === 'infoDelivery' && data.info) {
+        const info = data.info;
 
-              if (e.data === YT.PlayerState.ENDED) {
-                toParent({
-                  event: 'timeupdate',
-                  currentTime: player.getDuration(),
-                  duration: player.getDuration()
-                });
-              }
-            }
-          },
-          onError: (e) => {
-            toParent({ event: 'error', code: e.data });
-          }
+        if (info.duration) {
+          duration = info.duration;
+          window.parent.postMessage({ event: 'ready', duration }, '*');
         }
-      });
-    }
 
-    const tag = document.createElement('script');
-    tag.src = 'https://www.youtube.com/iframe_api';
-    document.head.appendChild(tag);
+        if (typeof info.currentTime !== 'undefined') {
+          window.parent.postMessage({
+            event: 'timeupdate',
+            currentTime: info.currentTime,
+            duration
+          }, '*');
+        }
 
-    window.onYouTubeIframeAPIReady = function() {
-      toParent({ event: 'apiReady' });
-    };
+        if (typeof info.playerState !== 'undefined') {
+          window.parent.postMessage({ event: 'stateChange', state: info.playerState }, '*');
+        }
+      }
+    });
   </script>
 </body>
 </html>
