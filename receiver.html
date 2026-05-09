@@ -13,13 +13,12 @@
     let player = null;
     let polling = null;
 
-    // ── Recebe comandos do pai ──
     window.addEventListener('message', (e) => {
       const { action, value } = e.data || {};
 
       switch (action) {
         case 'init':
-          initPlayer(value); // value = videoId
+          initPlayer(value);
           break;
         case 'play':
           player?.playVideo();
@@ -39,12 +38,10 @@
       }
     });
 
-    // ── Envia eventos para o pai ──
     function toParent(data) {
       window.parent.postMessage(data, '*');
     }
 
-    // ── Inicia o player ──
     function initPlayer(videoId) {
       player = new YT.Player('player', {
         videoId,
@@ -52,6 +49,7 @@
           rel: 0,
           modestbranding: 1,
           enablejsapi: 1
+          // 👆 sem origin aqui
         },
         events: {
           onReady: (e) => {
@@ -89,7 +87,6 @@
       });
     }
 
-    // ── Carrega API do YT ──
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     document.head.appendChild(tag);
