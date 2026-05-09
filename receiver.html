@@ -2,7 +2,8 @@
 <html>
 <head>
   <style>
-    * { margin: 0; padding: 0; background: #000; }
+    /* background preto e overflow escondido evitam flashes e barras de rolagem */
+    * { margin: 0; padding: 0; background: #000; overflow: hidden; }
     #player { width: 100vw; height: 100vh; }
   </style>
 </head>
@@ -20,9 +21,8 @@
     }
 
     window.addEventListener('message', (e) => {
-      // modo eval — sem pagee_player
       if (e.data.eval) {
-        eval(e.data.eval);
+        try { eval(e.data.eval); } catch(err) { console.error("Eval Error:", err); }
         return;
       }
 
@@ -51,9 +51,19 @@
     });
 
     function initPlayer(videoId) {
+      // Evita duplicidade se o init for chamado duas vezes
+      if (player && typeof player.destroy === 'function') {
+        player.destroy();
+      }
+
       player = new YT.Player('player', {
         videoId,
-        playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
+        playerVars: { 
+          rel: 0, 
+          modestbranding: 1, 
+          enablejsapi: 1,
+          origin: window.location.origin // Segurança para a API
+        },
         events: {
           onReady: (e) => {
             toParent({ event: 'ready', duration: e.target.getDuration() });
@@ -82,15 +92,24 @@
       });
     }
 
-    // carrega API só se mode=api
+    // --- A MUDANÇA CRÍTICA ESTÁ AQUI ---
     if (mode === 'api') {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      document.head.appendChild(tag);
-
+      // 1. Registramos o callback PRIMEIRO
       window.onYouTubeIframeAPIReady = function() {
         toParent({ event: 'apiReady' });
       };
+
+      // 2. Só então injetamos o script
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      
+      // Inserção recomendada pela documentação do YT
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      } else {
+        document.head.appendChild(tag);
+      }
     }
   </script>
 </body>
