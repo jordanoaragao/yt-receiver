@@ -8,9 +8,10 @@
 </head>
 <body>
   <div id="player"></div>
-
-  <script src="https://www.youtube.com/iframe_api"></script>
   <script>
+    const params = new URLSearchParams(location.search);
+    const mode = params.get('mode');
+
     let player = null;
     let polling = null;
 
@@ -18,44 +19,18 @@
       window.parent.postMessage(data, '*');
     }
 
-    window.onYouTubeIframeAPIReady = function() {
-      toParent({ event: 'apiReady' });
-    };
-
     window.addEventListener('message', (e) => {
+      // modo eval — sem pagee_player
+      if (e.data.eval) {
+        eval(e.data.eval);
+        return;
+      }
+
       const { action, value } = e.data || {};
 
       switch (action) {
         case 'init':
-          player = new YT.Player('player', {
-            videoId: value,
-            playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
-            events: {
-              onReady: (e) => {
-                toParent({ event: 'ready', duration: e.target.getDuration() });
-              },
-              onStateChange: (e) => {
-                toParent({ event: 'stateChange', state: e.data });
-                if (e.data === YT.PlayerState.PLAYING) {
-                  if (polling) clearInterval(polling);
-                  polling = setInterval(() => {
-                    toParent({
-                      event: 'timeupdate',
-                      currentTime: player.getCurrentTime(),
-                      duration: player.getDuration()
-                    });
-                  }, 300);
-                } else {
-                  if (polling) clearInterval(polling);
-                  polling = null;
-                  if (e.data === YT.PlayerState.ENDED) {
-                    toParent({ event: 'timeupdate', currentTime: player.getDuration(), duration: player.getDuration() });
-                  }
-                }
-              },
-              onError: (e) => toParent({ event: 'error', code: e.data })
-            }
-          });
+          initPlayer(value);
           break;
         case 'play':
           player?.playVideo();
@@ -74,6 +49,49 @@
           break;
       }
     });
+
+    function initPlayer(videoId) {
+      player = new YT.Player('player', {
+        videoId,
+        playerVars: { rel: 0, modestbranding: 1, enablejsapi: 1 },
+        events: {
+          onReady: (e) => {
+            toParent({ event: 'ready', duration: e.target.getDuration() });
+          },
+          onStateChange: (e) => {
+            toParent({ event: 'stateChange', state: e.data });
+            if (e.data === YT.PlayerState.PLAYING) {
+              if (polling) clearInterval(polling);
+              polling = setInterval(() => {
+                toParent({
+                  event: 'timeupdate',
+                  currentTime: player.getCurrentTime(),
+                  duration: player.getDuration()
+                });
+              }, 300);
+            } else {
+              if (polling) clearInterval(polling);
+              polling = null;
+              if (e.data === YT.PlayerState.ENDED) {
+                toParent({ event: 'timeupdate', currentTime: player.getDuration(), duration: player.getDuration() });
+              }
+            }
+          },
+          onError: (e) => toParent({ event: 'error', code: e.data })
+        }
+      });
+    }
+
+    // carrega API só se mode=api
+    if (mode === 'api') {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      document.head.appendChild(tag);
+
+      window.onYouTubeIframeAPIReady = function() {
+        toParent({ event: 'apiReady' });
+      };
+    }
   </script>
 </body>
 </html>
