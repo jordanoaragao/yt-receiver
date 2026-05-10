@@ -68,11 +68,13 @@
           onReady: (e) => {
             toParent({ event: 'ready', duration: e.target.getDuration() });
           },
-          onStateChange: (e) => {
+        onStateChange: (e) => {
             toParent({ event: 'stateChange', state: e.data });
+            
             if (e.data === YT.PlayerState.PLAYING) {
               if (polling) clearInterval(polling);
               polling = setInterval(() => {
+                // Enviamos currentTime e duration para o cálculo de proximidade no pai
                 toParent({
                   event: 'timeupdate',
                   currentTime: player.getCurrentTime(),
@@ -82,8 +84,15 @@
             } else {
               if (polling) clearInterval(polling);
               polling = null;
+
+              // No estado ENDED, garantimos que o pai receba o tempo final exato
               if (e.data === YT.PlayerState.ENDED) {
-                toParent({ event: 'timeupdate', currentTime: player.getDuration(), duration: player.getDuration() });
+                const total = player.getDuration();
+                toParent({ 
+                    event: 'timeupdate', 
+                    currentTime: total, 
+                    duration: total 
+                });
               }
             }
           },
