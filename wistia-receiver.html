@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Pagee Wistia Receiver</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+        }
+        /* Garante que o player ocupe todo o espaço do iframe do Pagee */
+        .wistia_embed {
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="wistia_target" class="wistia_embed"></div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const mode = urlParams.get('mode');
+
+        // 1. Assim que o DOM local do GitHub carregar, avisa o Pagee que a ponte HTTPS está pronta
+        if (mode === 'api') {
+            window.parent.postMessage({ event: 'apiReady' }, '*');
+        }
+
+        // 2. Escuta o comando 'init' vindo do Pagee com o ID do vídeo
+        window.addEventListener('message', function(e) {
+            const { action, value } = e.data || {};
+
+            if (action === 'init' && value) {
+                const target = document.getElementById('wistia_target');
+                
+                // Configura as classes assíncronas que a biblioteca do Wistia exige
+                target.className = `wistia_embed wistia_async_${value} videoFoam=true`;
+
+                // Carrega o script principal do Wistia via HTTPS estável
+                const script = document.createElement('script');
+                script.src = "https://fast.wistia.com/assets/external/E-v1.js";
+                script.async = true;
+                
+                script.onload = () => {
+                    initializeWistiaTracking(value);
+                };
+                
+                document.head.appendChild(script);
+            }
+        });
+
+        // 3. Conecta aos barramentos de eventos nativos da API do Wistia
+        function initializeWistiaTracking(wistiaId) {
+            window._wq = window._wq || [];
+            
+            window._wq.push({
+                id: wistiaId,
+                onReady: function(video) {
+                    // Devolve a duração real do vídeo para o Pagee injetar o atributo
+                    window.parent.postMessage({
+                        event: 'ready',
+                        duration: video.duration()
+                    }, '*');
+
+                    // Sapeia as mudanças de estado (Play, Pause, End)
+                    video.bind("play", () => { 
+                        window.parent.postMessage({ event: 'stateChange', state: 'playing' }, '*'); 
+                    });
+                    
+                    video.bind("pause", () => { 
+                        window.parent.postMessage({ event: 'stateChange', state: 'pause' }, '*'); 
+                    });
+                    
+                    video.bind("end", () => { 
+                        window.parent.postMessage({ event: 'stateChange', state: 'end' }, '*'); 
+                    });
+
+                    // Transmissão contínua do relógio do vídeo (alta precisão)
+                    video.bind("timechange", function(currentTime) {
+                        window.parent.postMessage({
+                            event: 'timeupdate',
+                            currentTime: currentTime
+                        }, '*');
+                    });
+                }
+            });
+        }
+    </script>
+</body>
+</html>
