@@ -26,16 +26,31 @@
     <script>
         const urlParams = new URLSearchParams(window.location.search);
         const mode = urlParams.get('mode');
+        
+        // Guarda a referência nativa do player do Wistia globalmente neste contexto do iframe
+        let wistiaVideoInstance = null;
 
         // 1. Assim que o DOM local do GitHub carregar, avisa o Pagee que a ponte HTTPS está pronta
         if (mode === 'api') {
             window.parent.postMessage({ event: 'apiReady' }, '*');
         }
 
-        // 2. Escuta o comando 'init' vindo do Pagee com o ID do vídeo
+        // 2. Central de escuta de mensagens (comandos do Pagee pai)
         window.addEventListener('message', function(e) {
-            const { action, value } = e.data || {};
+            const { action, value, eval: codeToRun } = e.data || {};
 
+            // Executa código injetado dinamicamente (ex: remoção de border-radius)
+            if (codeToRun) {
+                try {
+                    const dynamicFunction = new Function(codeToRun);
+                    dynamicFunction();
+                } catch (err) {
+                    console.error("Pagee Receiver: Erro ao executar eval dinâmico.", err);
+                }
+                return;
+            }
+
+            // Inicializa o player com o ID do vídeo encontrado pela Regex do Pagee
             if (action === 'init' && value) {
                 const target = document.getElementById('wistia_target');
                 
@@ -52,6 +67,16 @@
                 };
                 
                 document.head.appendChild(script);
+                return;
+            }
+
+            // ⚡ CONTROLE EXTERNO: Escuta comandos de reprodução vindo de botões do Pagee
+            if (action === 'control' && wistiaVideoInstance) {
+                if (value === 'play') {
+                    wistiaVideoInstance.play();
+                } else if (value === 'pause') {
+                    wistiaVideoInstance.pause();
+                }
             }
         });
 
@@ -62,6 +87,9 @@
             window._wq.push({
                 id: wistiaId,
                 onReady: function(video) {
+                    // Armazena a instância para habilitar o controle externo via botões
+                    wistiaVideoInstance = video;
+
                     // Devolve a duração real do vídeo para o Pagee injetar o atributo
                     window.parent.postMessage({
                         event: 'ready',
