@@ -2,18 +2,14 @@
 <html>
 <head>
   <style>
-    /* background preto e overflow escondido evitam flashes e barras de rolagem */
     * { margin: 0; padding: 0; background: #000; overflow: hidden; }
-    #player,iframe ,html,body{ width: 100vw; height: 100vh; }
-    .receiver_pagee_player{height:200vh !important; margin-top:-50vh}
+    #player, iframe, html, body { width: 100vw; height: 100vh; }
+    .receiver_pagee_player { height: 200vh !important; margin-top: -50vh; }
   </style>
 </head>
 <body>
   <div id="player"></div>
   <script>
-    const params = new URLSearchParams(location.search);
-    const mode = params.get('mode');
-
     let player = null;
     let polling = null;
 
@@ -21,9 +17,26 @@
       window.parent.postMessage(data, '*');
     }
 
+    // Escuta os comandos vindos do arquivo pai (Pagee)
     window.addEventListener('message', (e) => {
       if (e.data.eval) {
-        try { eval(e.data.eval); } catch(err) { console.error("Eval Error:", err); }
+        try { 
+          eval(e.data.eval); 
+          
+          // ⚡ INTERCEPTADOR DE FALLBACK: Se um iframe de fallback foi injetado, amarramos a API nele
+          const fallbackIframe = document.querySelector('div iframe');
+          if (fallbackIframe && player) {
+             // Quando o usuário interagir com o de cima, forçamos o play no de baixo (Start no timeupdate)
+             fallbackIframe.addEventListener('click', () => {
+                 if (player.getPlayerState() !== 1) {
+                     player.playVideo();
+                     player.mute();
+                 }
+             });
+          }
+        } catch(err) { 
+          console.error("Eval Error:", err); 
+        }
         return;
       }
 
@@ -52,7 +65,6 @@
     });
 
     function initPlayer(videoId) {
-      // Evita duplicidade se o init for chamado duas vezes
       if (player && typeof player.destroy === 'function') {
         player.destroy();
       }
@@ -63,19 +75,18 @@
           rel: 0, 
           modestbranding: 1, 
           enablejsapi: 1,
-          origin: window.location.origin // Segurança para a API
+          origin: window.location.origin
         },
         events: {
           onReady: (e) => {
             toParent({ event: 'ready', duration: e.target.getDuration() });
           },
-        onStateChange: (e) => {
+          onStateChange: (e) => {
             toParent({ event: 'stateChange', state: e.data });
             
             if (e.data === YT.PlayerState.PLAYING) {
               if (polling) clearInterval(polling);
               polling = setInterval(() => {
-                // Enviamos currentTime e duration para o cálculo de proximidade no pai
                 toParent({
                   event: 'timeupdate',
                   currentTime: player.getCurrentTime(),
@@ -86,7 +97,6 @@
               if (polling) clearInterval(polling);
               polling = null;
 
-              // No estado ENDED, garantimos que o pai receba o tempo final exato
               if (e.data === YT.PlayerState.ENDED) {
                 const total = player.getDuration();
                 toParent({ 
@@ -102,24 +112,18 @@
       });
     }
 
-    // --- A MUDANÇA CRÍTICA ESTÁ AQUI ---
-    if (mode === 'api') {
-      // 1. Registramos o callback PRIMEIRO
-      window.onYouTubeIframeAPIReady = function() {
-        toParent({ event: 'apiReady' });
-      };
+    // Sempre registra e dispara o barramento da API do YT
+    window.onYouTubeIframeAPIReady = function() {
+      toParent({ event: 'apiReady' });
+    };
 
-      // 2. Só então injetamos o script
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      
-      // Inserção recomendada pela documentação do YT
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      if (firstScriptTag) {
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      } else {
-        document.head.appendChild(tag);
-      }
+    const tag = document.createElement('script');
+    tag.src = 'https://www.youtube.com/iframe_api';
+    const firstScriptTag = document.getElementsByTagName('script')[0];
+    if (firstScriptTag) {
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+    } else {
+      document.head.appendChild(tag);
     }
   </script>
 </body>
