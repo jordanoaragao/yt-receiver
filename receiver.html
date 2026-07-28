@@ -249,6 +249,52 @@
         video.playbackRate = targetSpeed;
     }
 }
+
+
+    function gee_video_back10s(controlEl) {
+    if (!controlEl) return;
+    const elem = controlEl.closest('.gee-video');
+    if (!elem) return;
+
+    const player = PageePlayerMap.get(elem.id);
+    const secondsToSubtract = 10;
+
+    // 1. YouTube via Receiver (Iframe Local)
+    if (player?.type === 'receiver') {
+        const backScript = `if (player && typeof player.getCurrentTime === 'function') { player.seekTo(Math.max(0, player.getCurrentTime() - ${secondsToSubtract}), true); }`;
+        player.ref.contentWindow.postMessage({ eval: backScript }, '*');
+    } 
+    // 2. ⚡ Wistia via Receiver (Iframe Local)
+    else if (player?.type === 'wistia_receiver') {
+        const backScript = `if(wistiaVideoInstance) { wistiaVideoInstance.time(wistiaVideoInstance.time() - ${secondsToSubtract}); }`;
+        player.ref.contentWindow.postMessage({ eval: backScript }, '*');
+    }
+    // 3. ⚡ Wistia Nativo (Produção HTTPS)
+    else if (player?.type === 'wistia') {
+        const currentTime = player.ref.time();
+        player.ref.time(Math.max(0, currentTime - secondsToSubtract));
+    }
+    // 4. ⚡ Vimeo Nativo (SDK)
+    else if (player?.type === 'vimeo') {
+        player.ref.getCurrentTime().then(currentTime => {
+            player.ref.setCurrentTime(Math.max(0, currentTime - secondsToSubtract));
+        }).catch(err => {
+            console.error("Pagee: Erro ao voltar tempo no Vimeo", err);
+        });
+        
+    }
+    // 5. YouTube API Oficial
+    else if (player?.type === 'yt') {
+        const currentTime = player.ref.getCurrentTime();
+        player.ref.seekTo(Math.max(0, currentTime - secondsToSubtract), true);
+    } 
+    // 6. Fallback: Vídeo Nativo HTML5
+    else {
+        const video = elem.querySelector('video');
+        if (!video) return;
+        video.currentTime = Math.max(0, video.currentTime - secondsToSubtract);
+    }
+}
   </script>
 </body>
 </html>
