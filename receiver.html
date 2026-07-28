@@ -190,6 +190,65 @@
         menu.classList.remove('active');
     }
 }
+
+
+    function gee_video_speed(controlEl) {
+    if (!controlEl) return;
+    const elem = controlEl.closest('.gee-video');
+    if (!elem) return;
+
+    const player = PageePlayerMap.get(elem.id);
+
+    // Lê o estado atual do atributo speed_next
+    let currentSpeedNext = controlEl.getAttribute('speed_next');
+    let targetSpeed = 1;
+    let nextAttrValue = '1';
+
+    if (!currentSpeedNext || currentSpeedNext === '1') {
+        targetSpeed = 1.5;
+        nextAttrValue = '1.5';
+    } else if (currentSpeedNext === '1.5') {
+        targetSpeed = 2;
+        nextAttrValue = '2';
+    } else if (currentSpeedNext === '2') {
+        targetSpeed = 1;
+        nextAttrValue = '1';
+    }
+
+    // Atualiza o atributo no elemento de controle
+    controlEl.setAttribute('speed_next', nextAttrValue);
+
+    // 1. YouTube via Receiver (Iframe Local)
+    if (player?.type === 'receiver') {
+        const speedScript = `if (player && typeof player.setPlaybackRate === 'function') { player.setPlaybackRate(${targetSpeed}); }`;
+        player.ref.contentWindow.postMessage({ eval: speedScript }, '*');
+    } 
+    // 2. ⚡ Wistia via Receiver (Iframe Local)
+    else if (player?.type === 'wistia_receiver') {
+        const speedScript = `if(wistiaVideoInstance) { wistiaVideoInstance.playbackRate(${targetSpeed}); }`;
+        player.ref.contentWindow.postMessage({ eval: speedScript }, '*');
+    }
+    // 3. ⚡ Wistia Nativo (Produção HTTPS)
+    else if (player?.type === 'wistia') {
+        player.ref.playbackRate(targetSpeed);
+    }
+    // 4. ⚡ Vimeo Nativo (SDK)
+    else if (player?.type === 'vimeo') {
+        player.ref.setPlaybackRate(targetSpeed).catch(err => {
+            console.error("Pagee: Erro ao alterar velocidade no Vimeo", err);
+        });
+    }
+    // 5. YouTube API Oficial
+    else if (player?.type === 'yt') {
+        player.ref.setPlaybackRate(targetSpeed);
+    } 
+    // 6. Fallback: Vídeo Nativo HTML5
+    else {
+        const video = elem.querySelector('video');
+        if (!video) return;
+        video.playbackRate = targetSpeed;
+    }
+}
   </script>
 </body>
 </html>
