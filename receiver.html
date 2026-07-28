@@ -125,6 +125,71 @@
     } else {
       document.head.appendChild(tag);
     }
+
+
+
+    function gee_video_set_quality(itemEl) {
+    if (!itemEl) return;
+    const elem = itemEl.closest('.gee-video');
+    if (!elem) return;
+
+    const quality = itemEl.textContent.trim();
+    const btnDef = itemEl.closest('.gee-video-control-def');
+    
+    if (btnDef) {
+        btnDef.setAttribute('data-quality', quality);
+    }
+
+    const player = PageePlayerMap.get(elem.id);
+
+    // Mapa de qualidade compartilhado entre receiver e API oficial
+    const ytQualityMap = {
+        '1080': 'hd1080',
+        '720': 'hd720',
+        '360': 'medium',
+        'auto': 'default'
+    };
+
+    // 1. YouTube via Receiver (Iframe Local)
+    if (player?.type === 'receiver') {
+        const ytQuality = ytQualityMap[quality] || 'default';
+        const qualityScript = `if (player && typeof player.setPlaybackQuality === 'function') { player.setPlaybackQuality('${ytQuality}'); }`;
+        player.ref.contentWindow.postMessage({ eval: qualityScript }, '*');
+    } 
+    // 2. ⚡ Wistia via Receiver (Iframe Local)
+    else if (player?.type === 'wistia_receiver') {
+        const qualityScript = `if(wistiaVideoInstance) { /* Lógica de qualidade Wistia se suportado */ }`;
+        player.ref.contentWindow.postMessage({ eval: qualityScript }, '*');
+    }
+    // 3. ⚡ Wistia Nativo (Produção HTTPS)
+    else if (player?.type === 'wistia') {
+        // Wistia gerencia nativamente na UI própria ou customizações específicas de bitrate
+    }
+    // 4. ⚡ Vimeo Nativo (SDK)
+    else if (player?.type === 'vimeo') {
+        player.ref.setQuality(quality).catch(err => {
+            console.error("Pagee: Erro ao alterar qualidade no Vimeo", err);
+        });
+    }
+    // 5. YouTube API Oficial
+    else if (player?.type === 'yt') {
+        if (player.ref.setPlaybackQuality) {
+            player.ref.setPlaybackQuality(ytQualityMap[quality] || 'default');
+        }
+    } 
+    // 6. Fallback: Vídeo Nativo HTML5
+    else {
+        const video = elem.querySelector('video');
+        if (!video) return;
+        // Implementar lógica de troca de source se aplicável ao fallback nativo
+    }
+
+    // Fecha o menu após a seleção
+    const menu = itemEl.closest('.gee-video_subcontrol_menu');
+    if (menu) {
+        menu.classList.remove('active');
+    }
+}
   </script>
 </body>
 </html>
